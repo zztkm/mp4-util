@@ -1,13 +1,17 @@
 # mp4-util
 
-## LICENSE
+mp4 ファイルを操作するためのユーティリティ
 
-### Dpendencies
+## Dpendencies
 
 - [shiguredo_mp4](https://github.com/shiguredo/mp4-rust/tree/develop?tab=Apache-2.0-1-ov-file#readme)
   - Apache-2.0 ライセンス
 - [noargs](https://github.com/sile/noargs?tab=MIT-1-ov-file)
   - MIT ライセンス
+
+## LICENSE
+
+MIT ライセンス
 
 ## Tips
 
