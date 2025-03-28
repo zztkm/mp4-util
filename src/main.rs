@@ -2,10 +2,20 @@ use noargs;
 use std::fs::File;
 use shiguredo_mp4::{
     boxes::{
-        RootBox, MoovBox, SampleEntry
+        RootBox, MoovBox, SampleEntry, TrakBox
     },
-    Decode, Mp4File
+    Decode, Mp4File,
+    aux::SampleTableAccessor
 };
+
+/// トラック情報を格納する構造体
+struct TrackInfo {
+    media_type: String,
+    duration: f64,
+    codec: String,
+    sample_count: Option<u32>,
+    chunk_count: Option<u32>,
+}
 
 fn main() -> noargs::Result<()> {
     // Create `noargs::RawArgs` having the result of `std::env::args()`.
@@ -49,18 +59,65 @@ fn main() -> noargs::Result<()> {
     let file = File::open(&file_path)?;
     let mp4_file: Mp4File<RootBox> = Mp4File::decode(file).unwrap();
 
-    // トラックごとのコーデック情報を抽出
+    // MovieBox の情報を print する
     for box_item in mp4_file.boxes.iter() {
         if let RootBox::Moov(moov_box) = box_item {
-            print_codec_info(moov_box);
+            print_mp4_info(moov_box);
         }
     }
 
     Ok(())
 }
 
-fn print_codec_info(moov_box: &MoovBox) {
+/// 秒数から「分:秒」形式の文字列を生成する
+fn format_duration(duration_seconds: f64) -> String {
+    let minutes = (duration_seconds / 60.0).floor();
+    let seconds = duration_seconds % 60.0;
+    format!("{:.0}分{:.1}秒 ({:.2}秒)", minutes, seconds, duration_seconds)
+}
+
+/// トラックから情報を抽出する
+fn get_track_info(trak: &TrakBox) -> TrackInfo {
+    // メディアタイプ (ビデオ/オーディオ)
+    let handler_type = &trak.mdia_box.hdlr_box.handler_type;
+    let media_type = match handler_type {
+        b"vide" => "ビデオ",
+        b"soun" => "オーディオ",
+        _ => "不明"
+    }.to_string();
+    
+    // トラックの時間情報を取得
+    let track_timescale = trak.mdia_box.mdhd_box.timescale.get() as f64;
+    let track_duration = trak.mdia_box.mdhd_box.duration as f64 / track_timescale;
+    
+    // サンプルエントリからコーデック情報を取得
+    let codec = match trak.mdia_box.minf_box.stbl_box.stsd_box.entries.first() {
+        Some(sample_entry) => get_codec_name(sample_entry),
+        None => "不明 (サンプルエントリなし)".to_string()
+    };
+    
+    // サンプルテーブルから詳細情報を取得
+    let (sample_count, chunk_count) = match SampleTableAccessor::new(&trak.mdia_box.minf_box.stbl_box) {
+        Ok(sample_table) => (Some(sample_table.sample_count()), Some(sample_table.chunk_count())),
+        Err(_) => (None, None)
+    };
+    
+    TrackInfo {
+        media_type,
+        duration: track_duration,
+        codec,
+        sample_count,
+        chunk_count,
+    }
+}
+
+fn print_mp4_info(moov_box: &MoovBox) {
     println!("MP4ファイル情報：");
+    
+    // ファイル全体の時間を計算して表示
+    let movie_timescale = moov_box.mvhd_box.timescale.get() as f64;
+    let movie_duration = moov_box.mvhd_box.duration as f64 / movie_timescale;
+    println!("総再生時間: {}", format_duration(movie_duration));
     
     // トラック数を出力
     println!("トラック数: {}", moov_box.trak_boxes.len());
@@ -69,21 +126,20 @@ fn print_codec_info(moov_box: &MoovBox) {
     for (i, trak) in moov_box.trak_boxes.iter().enumerate() {
         println!("\nトラック {}:", i + 1);
         
-        // メディアタイプ (ビデオ/オーディオ)
-        let handler_type = &trak.mdia_box.hdlr_box.handler_type;
-        let media_type = match handler_type {
-            b"vide" => "ビデオ",
-            b"soun" => "オーディオ",
-            _ => "不明"
-        };
-        println!("メディアタイプ: {}", media_type);
+        // トラック情報を取得
+        let track_info = get_track_info(trak);
         
-        // サンプルエントリからコーデック情報を取得
-        if let Some(sample_entry) = trak.mdia_box.minf_box.stbl_box.stsd_box.entries.first() {
-            let codec = get_codec_name(sample_entry);
-            println!("コーデック: {}", codec);
-        } else {
-            println!("コーデック: 不明 (サンプルエントリなし)");
+        // 情報を表示
+        println!("メディアタイプ: {}", track_info.media_type);
+        println!("再生時間: {}", format_duration(track_info.duration));
+        println!("コーデック: {}", track_info.codec);
+        
+        // サンプル情報があれば表示
+        if let Some(sample_count) = track_info.sample_count {
+            println!("サンプル数: {}", sample_count);
+        }
+        if let Some(chunk_count) = track_info.chunk_count {
+            println!("チャンク数: {}", chunk_count);
         }
     }
 }
