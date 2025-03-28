@@ -74,28 +74,32 @@ fn print_codec_info(moov_box: &MoovBox) {
         let media_type = match handler_type {
             b"vide" => "ビデオ",
             b"soun" => "オーディオ",
-            b"hint" => "ヒント",
-            b"meta" => "メタデータ",
             _ => "不明"
         };
         println!("メディアタイプ: {}", media_type);
         
         // サンプルエントリからコーデック情報を取得
         if let Some(sample_entry) = trak.mdia_box.minf_box.stbl_box.stsd_box.entries.first() {
-            match sample_entry {
-                SampleEntry::Avc1(_) => println!("コーデック: AVC/H.264"),
-                SampleEntry::Hev1(_) => println!("コーデック: HEVC/H.265"),
-                SampleEntry::Vp08(_) => println!("コーデック: VP8"),
-                SampleEntry::Vp09(_) => println!("コーデック: VP9"),
-                SampleEntry::Av01(_) => println!("コーデック: AV1"),
-                SampleEntry::Opus(_) => println!("コーデック: Opus"),
-                SampleEntry::Mp4a(_) => println!("コーデック: AAC"),
-                SampleEntry::Unknown(unknown) => println!("コーデック: 不明 ({})", String::from_utf8_lossy(&unknown.box_type.as_bytes())),
-            }
+            let codec = get_codec_name(sample_entry);
+            println!("コーデック: {}", codec);
         } else {
             println!("コーデック: 不明 (サンプルエントリなし)");
         }
-        
-        // 追加情報（解像度、サンプルレートなど）は必要に応じて追加できます
+    }
+}
+
+fn get_codec_name(sample_entry: &SampleEntry) -> String {
+    match sample_entry {
+        SampleEntry::Avc1(_) => "AVC/H.264".to_string(),
+        SampleEntry::Hev1(_) => "HEVC/H.265".to_string(),
+        SampleEntry::Vp08(_) => "VP8".to_string(),
+        SampleEntry::Vp09(_) => "VP9".to_string(),
+        SampleEntry::Av01(_) => "AV1".to_string(),
+        SampleEntry::Opus(_) => "Opus".to_string(),
+        SampleEntry::Mp4a(_) => "AAC".to_string(),
+        SampleEntry::Unknown(unknown) => {
+            let box_type = String::from_utf8_lossy(&unknown.box_type.as_bytes());
+            format!("不明 ({})", box_type)
+        },
     }
 }
