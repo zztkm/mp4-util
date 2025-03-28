@@ -1,12 +1,10 @@
 use noargs;
-use std::fs::File;
 use shiguredo_mp4::{
-    boxes::{
-        RootBox, MoovBox, SampleEntry, TrakBox
-    },
     Decode, Mp4File,
-    aux::SampleTableAccessor
+    aux::SampleTableAccessor,
+    boxes::{MoovBox, RootBox, SampleEntry, TrakBox},
 };
+use std::fs::File;
 
 /// トラック情報を格納する構造体
 struct TrackInfo {
@@ -35,7 +33,7 @@ fn main() -> noargs::Result<()> {
     }
 
     // Handle application specific args.
-    let mp4_file: Option<String>= noargs::arg("mp4_file")
+    let mp4_file: Option<String> = noargs::arg("mp4_file")
         .doc("The path to the MP4 file")
         .take(&mut args)
         .parse_if_present()?;
@@ -73,7 +71,10 @@ fn main() -> noargs::Result<()> {
 fn format_duration(duration_seconds: f64) -> String {
     let minutes = (duration_seconds / 60.0).floor();
     let seconds = duration_seconds % 60.0;
-    format!("{:.0}分{:.1}秒 ({:.2}秒)", minutes, seconds, duration_seconds)
+    format!(
+        "{:.0}分{:.1}秒 ({:.2}秒)",
+        minutes, seconds, duration_seconds
+    )
 }
 
 /// トラックから情報を抽出する
@@ -83,25 +84,30 @@ fn get_track_info(trak: &TrakBox) -> TrackInfo {
     let media_type = match handler_type {
         b"vide" => "ビデオ",
         b"soun" => "オーディオ",
-        _ => "不明"
-    }.to_string();
-    
+        _ => "不明",
+    }
+    .to_string();
+
     // トラックの時間情報を取得
     let track_timescale = trak.mdia_box.mdhd_box.timescale.get() as f64;
     let track_duration = trak.mdia_box.mdhd_box.duration as f64 / track_timescale;
-    
+
     // サンプルエントリからコーデック情報を取得
     let codec = match trak.mdia_box.minf_box.stbl_box.stsd_box.entries.first() {
         Some(sample_entry) => get_codec_name(sample_entry),
-        None => "不明 (サンプルエントリなし)".to_string()
+        None => "不明 (サンプルエントリなし)".to_string(),
     };
-    
+
     // サンプルテーブルから詳細情報を取得
-    let (sample_count, chunk_count) = match SampleTableAccessor::new(&trak.mdia_box.minf_box.stbl_box) {
-        Ok(sample_table) => (Some(sample_table.sample_count()), Some(sample_table.chunk_count())),
-        Err(_) => (None, None)
-    };
-    
+    let (sample_count, chunk_count) =
+        match SampleTableAccessor::new(&trak.mdia_box.minf_box.stbl_box) {
+            Ok(sample_table) => (
+                Some(sample_table.sample_count()),
+                Some(sample_table.chunk_count()),
+            ),
+            Err(_) => (None, None),
+        };
+
     TrackInfo {
         media_type,
         duration: track_duration,
@@ -113,27 +119,27 @@ fn get_track_info(trak: &TrakBox) -> TrackInfo {
 
 fn print_mp4_info(moov_box: &MoovBox) {
     println!("MP4ファイル情報：");
-    
+
     // ファイル全体の時間を計算して表示
     let movie_timescale = moov_box.mvhd_box.timescale.get() as f64;
     let movie_duration = moov_box.mvhd_box.duration as f64 / movie_timescale;
     println!("総再生時間: {}", format_duration(movie_duration));
-    
+
     // トラック数を出力
     println!("トラック数: {}", moov_box.trak_boxes.len());
-    
+
     // 各トラックの情報を出力
     for (i, trak) in moov_box.trak_boxes.iter().enumerate() {
         println!("\nトラック {}:", i + 1);
-        
+
         // トラック情報を取得
         let track_info = get_track_info(trak);
-        
+
         // 情報を表示
         println!("メディアタイプ: {}", track_info.media_type);
         println!("再生時間: {}", format_duration(track_info.duration));
         println!("コーデック: {}", track_info.codec);
-        
+
         // サンプル情報があれば表示
         if let Some(sample_count) = track_info.sample_count {
             println!("サンプル数: {}", sample_count);
@@ -156,6 +162,6 @@ fn get_codec_name(sample_entry: &SampleEntry) -> String {
         SampleEntry::Unknown(unknown) => {
             let box_type = String::from_utf8_lossy(&unknown.box_type.as_bytes());
             format!("不明 ({})", box_type)
-        },
+        }
     }
 }
