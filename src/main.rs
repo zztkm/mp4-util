@@ -1,4 +1,3 @@
-use noargs;
 use shiguredo_mp4::{
     Decode, Mp4File,
     aux::SampleTableAccessor,
@@ -160,7 +159,7 @@ fn get_codec_name(sample_entry: &SampleEntry) -> String {
         SampleEntry::Opus(_) => "Opus".to_string(),
         SampleEntry::Mp4a(_) => "MPEG AAC Audio (mp4a)".to_string(),
         SampleEntry::Unknown(unknown) => {
-            let box_type = String::from_utf8_lossy(&unknown.box_type.as_bytes());
+            let box_type = String::from_utf8_lossy(unknown.box_type.as_bytes());
             format!("不明 ({})", box_type)
         }
     }
