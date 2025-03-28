@@ -1,0 +1,9 @@
+[package]
+name = "mp4-util"
+description = "A utility for MP4 file manipulation"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+noargs = "0.1.0"
+shiguredo_mp4 = "2025.1.0"
