@@ -1,39 +1,49 @@
 use shiguredo_mp4::{
-    Decode, Mp4File, Result,
+    Decode, Mp4File,
     aux::SampleTableAccessor,
-    boxes::{MoovBox, RootBox, SampleEntry, TrakBox},
+    boxes::{RootBox, SampleEntry, TrakBox},
 };
 use std::io::Read;
 
 pub struct InputMp4 {
-    mp4_file: Mp4File<RootBox>,
+    tracks: Vec<TrakBox>,
 }
 
 impl InputMp4 {
-    pub fn parse<R: Read>(reader: R) -> Result<Self> {
-        let mp4_file = Mp4File::decode(reader)?;
-        Ok(InputMp4 { mp4_file })
-    }
-
-    pub fn get_track_infos(&self) -> Option<Vec<TrackInfo>> {
-        let moov_box = self.get_moov_box()?;
-        let mut tracks = Vec::new();
-        for trak in moov_box.trak_boxes.iter() {
-            // トラック情報を取得
-            tracks.push(self.get_track_info(trak));
-        }
-        Some(tracks)
-    }
-
-    /// MP4 ファイルから Moovie Box を取得する
-    fn get_moov_box(&self) -> Option<&MoovBox> {
-        self.mp4_file.boxes.iter().find_map(|box_item| {
+    pub fn parse<R: Read>(reader: R) -> Result<Self, String> {
+        let mp4_file = match Mp4File::decode(reader) {
+            Ok(file) => file,
+            Err(e) => return Err(format!("MP4 ファイルの解析に失敗しました: {}", e)),
+        };
+        let moov_box = mp4_file.boxes.iter().find_map(|box_item| {
             if let RootBox::Moov(moov_box) = box_item {
                 Some(moov_box)
             } else {
                 None
             }
-        })
+        });
+        if moov_box.is_none() {
+            return Err("moov box not found".to_string());
+        }
+        let moov_box = moov_box.unwrap();
+
+        let mut tracks = Vec::new();
+        for trak in moov_box.trak_boxes.iter() {
+            // トラック情報を取得
+            tracks.push(trak.clone());
+        }
+
+        Ok(InputMp4 { tracks })
+    }
+
+    /// MP4 ファイルのトラック情報を取得する
+    pub fn get_track_infos(&self) -> Option<Vec<TrackInfo>> {
+        let mut tracks = Vec::new();
+        for trak in self.tracks.iter() {
+            // トラック情報を取得
+            tracks.push(self.get_track_info(trak));
+        }
+        Some(tracks)
     }
 
     fn get_track_info(&self, trak: &TrakBox) -> TrackInfo {
