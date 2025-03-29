@@ -49,7 +49,7 @@ fn main() -> noargs::Result<()> {
 }
 
 fn print_mp4_info(mp4: &InputMp4) {
-    let tracks = match mp4.get_tracks() {
+    let tracks = match mp4.get_track_infos() {
         Some(tracks) => tracks,
         None => {
             println!("トラック情報が取得できませんでした。");

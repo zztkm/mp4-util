@@ -15,7 +15,7 @@ impl InputMp4 {
         Ok(InputMp4 { mp4_file })
     }
 
-    pub fn get_tracks(&self) -> Option<Vec<TrackInfo>> {
+    pub fn get_track_infos(&self) -> Option<Vec<TrackInfo>> {
         let moov_box = self.get_moov_box()?;
         let mut tracks = Vec::new();
         for trak in moov_box.trak_boxes.iter() {
