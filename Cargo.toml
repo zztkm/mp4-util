@@ -1,5 +1,5 @@
 [package]
-name = "mp4-util"
+name = "mp4util"
 description = "A utility for MP4 file manipulation"
 version = "0.1.0"
 edition = "2024"
