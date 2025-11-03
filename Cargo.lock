@@ -12,12 +12,12 @@ dependencies = [
 
 [[package]]
 name = "noargs"
-version = "0.1.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "971e14b3f082b1c129148b3e293065efa86c2140e4ec3777686389446e6ba264"
+checksum = "fe77e710319d3ff009f93efc433d879e80e6336f5b87ace6d6db7ca5951085c3"
 
 [[package]]
 name = "shiguredo_mp4"
-version = "2025.1.0"
+version = "2025.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74bd04dc827a7f96d11d77dc432d92666198bb813ab8db477e869539b5b7ccb"
+checksum = "531b351cb6aa06e9e8ea5d55367ee1b634120f0d430f65e5a10ab135e151b164"

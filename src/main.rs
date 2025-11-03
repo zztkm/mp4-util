@@ -23,7 +23,7 @@ fn main() -> noargs::Result<()> {
     let mp4_file: Option<String> = noargs::arg("mp4_file")
         .doc("The path to the MP4 file")
         .take(&mut args)
-        .parse_if_present()?;
+        .present_and_then(|a| a.value().parse())?;
 
     // Check unexpected args and build help text if need.
     if let Some(help) = args.finish()? {
