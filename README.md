@@ -11,14 +11,6 @@ mp4 ファイルを操作するためのユーティリティ
 
 ## LICENSE
 
-MIT ライセンス
+本プロジェクトは、主に MIT ライセンスで提供されます。
+ただし、サードパーティのコンポーネントまたは参考にしたコードの一部には、 Apache License 2.0 が適用されます。
 
-## Tips
-
-uithub で取得したソースコードを GitHub Copilot に読み込ませるとコード補完やコード生成の精度が上がる (気がする)。
-
-やり方
-
-1. コードを取得
-  - https://uithub.com/shiguredo/mp4-rust/tree/951c088a8a7fa63f617d0cb16597576fe1199cdd/src?accept=text%2Fhtml&maxTokens=50000&ext=rs
-2. `.github/copilot-instractions.md` を作成し、uithub から取得したコードを貼り付ける
