@@ -10,9 +10,15 @@ pub struct InputMp4 {
 }
 
 impl InputMp4 {
-    pub fn parse<R: Read>(reader: R) -> Result<Self, String> {
-        let mp4_file = match Mp4File::decode(reader) {
-            Ok(file) => file,
+    pub fn parse<R: Read>(mut reader: R) -> Result<Self, String> {
+        // Read all data into a buffer
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)
+            .map_err(|e| format!("ファイルの読み込みに失敗しました: {}", e))?;
+
+        // Decode returns (Mp4File, usize) tuple
+        let (mp4_file, _) = match Mp4File::decode(&buffer) {
+            Ok(result) => result,
             Err(e) => return Err(format!("MP4 ファイルの解析に失敗しました: {}", e)),
         };
         let moov_box = mp4_file.boxes.iter().find_map(|box_item| {
@@ -94,6 +100,7 @@ impl InputMp4 {
             SampleEntry::Av01(_) => "AV1".to_string(),
             SampleEntry::Opus(_) => "Opus".to_string(),
             SampleEntry::Mp4a(_) => "MPEG AAC Audio (mp4a)".to_string(),
+            SampleEntry::Flac(_) => "FLAC".to_string(),
             SampleEntry::Unknown(unknown) => {
                 let box_type = String::from_utf8_lossy(unknown.box_type.as_bytes());
                 format!("不明 ({})", box_type)
