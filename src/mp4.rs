@@ -13,7 +13,8 @@ impl InputMp4 {
     pub fn parse<R: Read>(mut reader: R) -> Result<Self, String> {
         // Read all data into a buffer
         let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer)
+        reader
+            .read_to_end(&mut buffer)
             .map_err(|e| format!("ファイルの読み込みに失敗しました: {}", e))?;
 
         // Decode returns (Mp4File, usize) tuple

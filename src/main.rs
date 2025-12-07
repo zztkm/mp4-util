@@ -25,7 +25,7 @@ fn main() -> noargs::Result<()> {
     if INFO_COMMAND.take(&mut args).is_present() {
         mp4util::subcommand_info::run(args)?;
     } else if EXTRACT_COMMAND.take(&mut args).is_present() {
-        todo!();
+        mp4util::subcommand_extract::run(args)?;
     } else if let Some(help) = args.finish()? {
         print!("{help}");
     }
