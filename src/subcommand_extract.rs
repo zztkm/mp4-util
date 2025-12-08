@@ -6,7 +6,7 @@ use std::{
 };
 
 use shiguredo_mp4::{
-    Decode, Mp4File, TrackKind,
+    Decode, Encode, Mp4File, TrackKind,
     aux::SampleTableAccessor,
     boxes::{RootBox, SampleEntry, TrakBox},
     mux::{Mp4FileMuxer, Mp4FileMuxerOptions, Sample, estimate_maximum_moov_box_size},
@@ -246,11 +246,41 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
         .finalize()
         .map_err(|e| format!("ファイナライズに失敗しました: {}", e))?;
 
-    // ファイナライズ後のボックス情報をファイルに書き込み
-    for (offset, bytes) in finalized.offset_and_bytes_pairs() {
-        output_file.seek(SeekFrom::Start(offset))?;
-        output_file.write_all(bytes)?;
+    // moov_box を複製して matrix を修正（回転情報を維持するため）
+    let mut modified_moov_box = finalized.moov_box().clone();
+
+    // ビデオトラックの matrix を元のファイルから復元
+    let video_matrix = track_infos
+        .iter()
+        .find(|t| t.track_kind == TrackKind::Video)
+        .map(|t| t.trak_box.tkhd_box.matrix);
+
+    if let Some(matrix) = video_matrix {
+        for trak_box in &mut modified_moov_box.trak_boxes {
+            if trak_box.mdia_box.hdlr_box.handler_type == *b"vide" {
+                trak_box.tkhd_box.matrix = matrix;
+                break;
+            }
+        }
     }
+
+    // 修正した moov_box を再エンコード
+    let modified_moov_bytes = modified_moov_box
+        .encode_to_vec()
+        .map_err(|e| format!("moov ボックスの再エンコードに失敗しました: {}", e))?;
+
+    // offset_and_bytes_pairs() から offset を取得
+    let pairs: Vec<_> = finalized.offset_and_bytes_pairs().collect();
+    let (moov_offset, _) = pairs[0];
+    let (mdat_offset, mdat_header_bytes) = pairs[1];
+
+    // 修正した moov を書き込み
+    output_file.seek(SeekFrom::Start(moov_offset))?;
+    output_file.write_all(&modified_moov_bytes)?;
+
+    // mdat ヘッダーを書き込み
+    output_file.seek(SeekFrom::Start(mdat_offset))?;
+    output_file.write_all(mdat_header_bytes)?;
 
     // 結果を表示
     let video_info = track_infos
