@@ -1,21 +1,34 @@
-use std::{fs::File, path::PathBuf};
-
+use crate::io::InputSource;
 use crate::mp4::InputMp4;
 
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
-    let input_file_path: PathBuf = noargs::arg("INPUT_FILE")
+    let input_file_arg: Option<String> = noargs::arg("[INPUT_FILE]")
         .example("/path/to/input.mp4")
-        .doc("情報を取得する MP4 ファイル")
+        .doc("情報を取得する MP4 ファイル（省略時は stdin から読み込み）")
         .take(&mut args)
-        .then(|a| a.value().parse())?;
+        .then(|a| a.value().parse())
+        .ok();
     if let Some(help) = args.finish()? {
         print!("{help}");
         return Ok(());
     }
 
-    let file = File::open(input_file_path)?;
+    let input_source = match InputSource::from_arg(input_file_arg) {
+        Some(source) => source,
+        None => {
+            // stdin が TTY で引数もない場合はヘルプを表示
+            eprintln!("エラー: 入力ファイルを指定するか、パイプで入力してください");
+            eprintln!("使用例: mp4-util info input.mp4");
+            eprintln!("使用例: cat input.mp4 | mp4-util info");
+            std::process::exit(1);
+        }
+    };
 
-    let input_mp4 = InputMp4::parse(file)?;
+    let reader = input_source
+        .reader()
+        .map_err(|e| format!("入力を開けません ({}): {}", input_source.description(), e))?;
+
+    let input_mp4 = InputMp4::parse(reader)?;
     print_mp4_info(&input_mp4);
     Ok(())
 }

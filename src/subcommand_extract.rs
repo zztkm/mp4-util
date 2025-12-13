@@ -1,8 +1,6 @@
 use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Cursor, Read, Seek, SeekFrom, Write},
     num::NonZeroU32,
-    path::PathBuf,
 };
 
 use shiguredo_mp4::{
@@ -11,6 +9,8 @@ use shiguredo_mp4::{
     boxes::{RootBox, SampleEntry, TrakBox},
     mux::{Mp4FileMuxer, Mp4FileMuxerOptions, Sample, estimate_maximum_moov_box_size},
 };
+
+use crate::io::{InputSource, OutputSink};
 
 const START_OPT: noargs::OptSpec = noargs::opt("start")
     .short('s')
@@ -26,22 +26,26 @@ const END_OPT: noargs::OptSpec = noargs::opt("end")
 
 const OUTPUT_OPT: noargs::OptSpec = noargs::opt("output")
     .short('o')
-    .doc("出力ファイルパス")
+    .doc("出力ファイルパス（省略時は stdout）")
     .ty("PATH")
     .example("output.mp4");
 
 pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
-    let input_file_path: PathBuf = noargs::arg("INPUT_FILE")
+    let input_file_arg: Option<String> = noargs::arg("[INPUT_FILE]")
         .example("/path/to/input.mp4")
-        .doc("抽出元の MP4 ファイル")
+        .doc("抽出元の MP4 ファイル（省略時は stdin から読み込み）")
         .take(&mut args)
-        .then(|a| a.value().parse())?;
+        .then(|a| a.value().parse())
+        .ok();
 
     let start_sec: f64 = START_OPT.take(&mut args).then(|o| o.value().parse())?;
 
     let end_sec: f64 = END_OPT.take(&mut args).then(|o| o.value().parse())?;
 
-    let output_file_path: PathBuf = OUTPUT_OPT.take(&mut args).then(|o| o.value().parse())?;
+    let output_file_arg: Option<String> = OUTPUT_OPT
+        .take(&mut args)
+        .then(|o| o.value().parse())
+        .ok();
 
     if let Some(help) = args.finish()? {
         print!("{help}");
@@ -56,10 +60,29 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
         return Err("終了秒数は開始秒数より大きい必要があります".into());
     }
 
+    // 入力ソースを決定
+    let input_source = match InputSource::from_arg(input_file_arg) {
+        Some(source) => source,
+        None => {
+            eprintln!("エラー: 入力ファイルを指定するか、パイプで入力してください");
+            eprintln!("使用例: mp4-util extract input.mp4 -s 10 -e 30 -o output.mp4");
+            eprintln!("使用例: cat input.mp4 | mp4-util extract -s 10 -e 30 > output.mp4");
+            std::process::exit(1);
+        }
+    };
+
+    // 出力先を決定（バイナリ出力なので TTY は不可）
+    let output_sink = OutputSink::from_arg(output_file_arg, false)?;
+
+    // メッセージを stderr に出力するかどうか（stdout が出力先の場合）
+    let use_stderr = !output_sink.is_file();
+
     // MP4 ファイルを読み込み
-    let mut file = File::open(&input_file_path)?;
+    let mut reader = input_source
+        .reader()
+        .map_err(|e| format!("入力を開けません ({}): {}", input_source.description(), e))?;
     let mut file_data = Vec::new();
-    file.read_to_end(&mut file_data)?;
+    reader.read_to_end(&mut file_data)?;
 
     let (mp4_file, _) = Mp4File::decode(&file_data)
         .map_err(|e| format!("MP4 ファイルの解析に失敗しました: {}", e))?;
@@ -152,12 +175,12 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     let mut muxer = Mp4FileMuxer::with_options(options)
         .map_err(|e| format!("Muxer の初期化に失敗しました: {}", e))?;
 
-    // 出力ファイルを作成
-    let mut output_file = File::create(&output_file_path)?;
+    // 出力バッファを作成（stdout 出力のため Seek 可能な Cursor を使用）
+    let mut output_buffer: Cursor<Vec<u8>> = Cursor::new(Vec::new());
 
     // 初期ボックスを書き込み
     let initial_bytes = muxer.initial_boxes_bytes();
-    output_file.write_all(initial_bytes)?;
+    output_buffer.write_all(initial_bytes)?;
     let mut current_offset = initial_bytes.len() as u64;
 
     // 各トラックからサンプルを抽出して書き込み
@@ -215,8 +238,8 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
         let data_size = sample_accessor.data_size() as usize;
         let sample_data = &file_data[data_offset..data_offset + data_size];
 
-        // 出力ファイルに書き込み
-        output_file.write_all(sample_data)?;
+        // 出力バッファに書き込み
+        output_buffer.write_all(sample_data)?;
 
         // Muxer にサンプルを追加
         let sample = Sample {
@@ -275,14 +298,20 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
     let (mdat_offset, mdat_header_bytes) = pairs[1];
 
     // 修正した moov を書き込み
-    output_file.seek(SeekFrom::Start(moov_offset))?;
-    output_file.write_all(&modified_moov_bytes)?;
+    output_buffer.seek(SeekFrom::Start(moov_offset))?;
+    output_buffer.write_all(&modified_moov_bytes)?;
 
     // mdat ヘッダーを書き込み
-    output_file.seek(SeekFrom::Start(mdat_offset))?;
-    output_file.write_all(mdat_header_bytes)?;
+    output_buffer.seek(SeekFrom::Start(mdat_offset))?;
+    output_buffer.write_all(mdat_header_bytes)?;
 
-    // 結果を表示
+    // バッファの内容を出力先に書き込み
+    let mut writer = output_sink
+        .writer()
+        .map_err(|e| format!("出力先を開けません ({}): {}", output_sink.description(), e))?;
+    writer.write_all(output_buffer.get_ref())?;
+
+    // 結果を表示（stdout が出力先の場合は stderr に出力）
     let video_info = track_infos
         .iter()
         .find(|t| t.track_kind == TrackKind::Video);
@@ -290,21 +319,29 @@ pub fn run(mut args: noargs::RawArgs) -> noargs::Result<()> {
         .iter()
         .find(|t| t.track_kind == TrackKind::Audio);
 
-    println!("抽出が完了しました: {}", output_file_path.display());
+    let print_message = |msg: &str| {
+        if use_stderr {
+            eprintln!("{}", msg);
+        } else {
+            println!("{}", msg);
+        }
+    };
+
+    print_message(&format!("抽出が完了しました: {}", output_sink.description()));
     if let Some(info) = video_info {
         let start_time = info.start_timestamp as f64 / info.timescale.get() as f64;
         let sample_count = info.end_sample_index.get() - info.start_sample_index.get() + 1;
-        println!(
+        print_message(&format!(
             "  ビデオ: {} サンプル (実際の開始時間: {:.3}秒)",
             sample_count, start_time
-        );
+        ));
     }
     if let Some(info) = audio_info {
         let sample_count = info.end_sample_index.get() - info.start_sample_index.get() + 1;
-        println!("  オーディオ: {} サンプル", sample_count);
+        print_message(&format!("  オーディオ: {} サンプル", sample_count));
     }
     if finalized.is_faststart_enabled() {
-        println!("  faststart: 有効");
+        print_message("  faststart: 有効");
     }
 
     Ok(())
